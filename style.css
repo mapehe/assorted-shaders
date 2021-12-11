@@ -1,0 +1,70 @@
+#title {
+  margin: auto 0;
+  top: 40vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+  color: black;
+}
+
+#end {
+  margin: auto 0;
+  top: 5950vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+  color: white;
+}
+
+h2, h3 {
+  background: black;
+  font-weight: 200;
+}
+
+a {
+  color: #ffa400;
+}
+
+#slogan {
+  margin: auto 0;
+  top: 240vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+}
+
+#tada {
+  margin: auto 0;
+  top: 500vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+}
+
+#pitch {
+  margin: auto 0;
+  top: 700vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+}
+
+#footer {
+  margin: auto 0;
+  top: 900vh;
+  position: absolute;
+  left: 50vw;
+  transform: translatex(-50%) translatey(-50%);
+}
+
+#demo {
+  height: 6000vh;
+  color: white;
+  font-family: sans-serif;
+  line-height: 2em;
+  letter-spacing: 0.1em;
+}
+
+.highlight {
+  color: rgb(255, 0, 0);
+}

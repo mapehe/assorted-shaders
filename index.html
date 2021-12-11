@@ -1,0 +1,619 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Hello.</title>
+    <link rel="stylesheet" href="./style.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <script src="shader-web-background.min.js"></script>
+    <script type="x-shader/x-fragment" id="Intro">
+      precision highp float;
+
+      uniform float iTime;
+      uniform float iScrollTop;
+      uniform vec2 iResolution;
+      uniform sampler2D iEye;
+
+      #define TIME iScrollTop
+      #define EYE_START 1.
+      #define EYE_END 10.
+      #define PI 3.1415926535
+
+      float hash12(vec2 p)
+      {
+        vec3 p3  = fract(vec3(p.xyx) * .1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      void render(){
+        vec4 col = vec4(1.);
+        float m = min(min(iResolution.x, iResolution.y), 1000.);
+        vec2 uv = gl_FragCoord.xy / iResolution;
+
+        float lambda_eye = (TIME - EYE_END)/(EYE_START-EYE_END);
+        lambda_eye = max(min(lambda_eye, 1.), 0.);
+        float phase = .4*pow(sin(PI * lambda_eye),2.);
+
+        vec2 offset = (gl_FragCoord.xy - m) / 2.;
+        vec2 gv = (gl_FragCoord.xy - .5 * iResolution + .5 * m) / m;
+        gv = (gv-.5)*vec2(1., -1.)+.5;
+        float st = floor( 1. / (phase+.05) ) * .05;
+        vec2 id = floor(gl_FragCoord.xy / (25.*st + .1));
+        float phi = .5*hash12(id + st);
+        float tid = floor((iTime + 100.) * phi) / phi;
+        float s = sign(hash12(tid * id) - (1.-phase) );
+        float amp = min(s, 1.) * texture2D(iEye, gv).a;
+
+        col = mix(col, vec4(vec3(0.), 1.), amp);
+        gl_FragColor = col;
+      }
+      void main(){
+        if(TIME > EYE_START && TIME <= EYE_END) {
+          render();
+        } else {
+          gl_FragColor = vec4(1.);
+        }
+      }
+    </script>
+    <script type="x-shader/x-fragment" id="Effect1">
+      precision highp float;
+
+      uniform float iTime;
+      uniform float iScrollTop;
+      uniform vec2 iResolution;
+      uniform sampler2D iEye;
+      uniform sampler2D iZero;
+      uniform sampler2D iOne;
+
+      #define TIME iScrollTop
+      #define EYE_START .5
+      #define EYE_END 10.
+      #define PI 3.1415926535
+      #define START 10.
+      #define END 20.
+
+      float hash12(vec2 p)
+      {
+        vec3 p3  = fract(vec3(p.xyx) * .1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      vec3 sampleBackground(vec2 uv){
+        float m = 25.;
+        vec2 xy = gl_FragCoord.xy;
+        xy.y += 200.*iTime;
+        vec2 gv = fract(xy / m);
+        vec2 id = floor(xy / m);
+        float c = 5.*hash12(id + vec2(100.));
+        float tid = floor(c * iTime) + 100.;
+        float s = sign(max(hash12(id +tid) - .5, 0.));
+        gv = (gv-.5)*vec2(1., -1.)+.5;
+        float r = hash12(iTime * gl_FragCoord.xy + 1.);
+        float g = hash12(iTime * gl_FragCoord.xy + 2.);
+        float b = hash12(iTime * gl_FragCoord.xy + 3.);
+        vec3 dark = vec3(7., 6., 0.)/ 255.;
+        vec3 digit_col = 1.5*vec3(255., 188., 66.) / 255.;
+
+        vec4 one = s * texture2D(iOne, gv);
+        vec4 zero = (1.-s) * texture2D(iZero, gv);
+
+        float glitch = pow(length(gl_FragCoord.xy/iResolution) / sqrt(2.), 2.)-.2;
+        vec3 col = mix(dark, glitch*digit_col, one.a + zero.a);
+
+        return  col;
+      }
+
+      vec3 palette1(float i){
+        vec3 col1 = vec3(247., 37., 133.) / 255.;
+        vec3 col2 = vec3(144., 9., 183.) / 255.;
+        vec3 col3 = vec3(58., 12., 163.) / 255.;
+        vec3 col4 = vec3(67., 97., 238.) / 255.;
+        vec3 col5 = vec3(76., 201., 240.) / 255.;
+        vec3 black = vec3(1.);
+
+        float a1 = 1.-sign(abs(1.-i));
+        float a2 = 1.-sign(abs(2.-i));
+        float a3 = 1.-sign(abs(3.-i));
+        float a4 = 1.-sign(abs(4.-i));
+        float a5 = 1.-sign(abs(5.-i));
+        float d = 1.-sign(a1+a2+a3+a4+a5);
+
+        return d * black +
+                a1 * col1 +
+                a2 * col2 +
+                a3 * col3 +
+                a4 * col4 +
+                a5 * col5;
+      }
+
+      vec3 sampleForeground(vec2 uv, float lambda){
+        float t = 0.05 * (hash12(gl_FragCoord.xy) - .5) + 1.;
+        float y = uv.y;
+        float i = floor(5.*y) + 1.;
+        float m = sign(5.*(1. - lambda) - .1 * i);
+        m = clamp(0., 1., m);
+        vec3 col = palette1(i);
+        col = mix(vec3(1.), col, m);
+        return col;
+      }
+
+      float HexDist(vec2 p) {
+        p = abs(p);
+        float c = dot(p, normalize(vec2(1,1.73)));
+        c = max(c, p.x);
+        return c;
+      }
+
+      vec4 HexCoords(vec2 uv) {
+        vec2 r = vec2(1, 1.73);
+        vec2 h = r*.5;
+
+        vec2 a = mod(uv, r)-h;
+        vec2 b = mod(uv-h, r)-h;
+
+        vec2 gv = dot(a, a) < dot(b,b) ? a : b;
+
+        float x = atan(gv.x, gv.y);
+        float y = .5-HexDist(gv);
+        vec2 id = uv-gv;
+        return vec4(x, y, id.x,id.y);
+      }
+
+      void render()
+      {
+        float lambda = (TIME - END)/(START-END);
+        lambda = clamp(0., 1., lambda);
+        float phase = .4*pow(sin(PI * lambda),2.);
+        vec2 uv = gl_FragCoord.xy/iResolution.y;
+        vec3 col = vec3(0);
+        uv *= 10.;
+        vec4 hc = HexCoords(uv+100.);
+
+        float c = 1. - smoothstep(.01, .05, phase* hc.y * pow(cos(.0001*(iScrollTop)*hc.z * hc.w + iTime), 2.));
+        col += c;
+        float s = sign(length(col));
+
+        uv = gl_FragCoord.xy/iResolution.y;
+        col = mix(sampleBackground(uv), sampleForeground(uv, lambda), s);
+        gl_FragColor = vec4(col,1.0);
+      }
+
+      void main(){
+        if(TIME > START && TIME <= END) {
+          render();
+        } else {
+          gl_FragColor = vec4(.0);
+        }
+      }
+    </script>
+    <script type="x-shader/x-fragment" id="SVG">
+      // Star polyon algo: https://www.shadertoy.com/view/3tS3zc
+
+      precision highp float;
+
+      uniform float iTime;
+      uniform float iScrollTop;
+      uniform vec2 iResolution;
+      #define START 20.
+      #define END 50.
+      #define TIME iScrollTop
+
+      float hash12(vec2 p)
+      {
+        vec3 p3  = fract(vec3(p.xyx) * .1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      #define N 5
+      #define D 2
+
+      const float PI = 3.14159265359;
+      const float PI_2 = 2.0 * PI;
+      const float DEGREES_TO_RADIANS = PI / 180.0;
+      const float EXTERNAL_ANGLE_N_3 = 150.0 * DEGREES_TO_RADIANS;
+      const float EXTERNAL_ANGLE_N_4 = 135.0 * DEGREES_TO_RADIANS;
+
+      vec3 palette1(float i){
+        vec3 col1 = vec3(255., 168., 8.) / 255.;
+        vec3 col2 = vec3(232., 93., 4.) / 255.;
+        vec3 col3 = vec3(208., 0., 0.) / 255.;
+        vec3 col4 = vec3(106., 4., 15.) / 255.;
+        vec3 col5 = vec3(3., 7., 30.) / 255.;
+        vec3 black = vec3(1.);
+
+        float a1 = 1.-sign(abs(1.-i));
+        float a2 = 1.-sign(abs(2.-i));
+        float a3 = 1.-sign(abs(3.-i));
+        float a4 = 1.-sign(abs(4.-i));
+        float a5 = 1.-sign(abs(5.-i));
+        float d = 1.-sign(a1+a2+a3+a4+a5);
+
+        return d * black +
+                a1 * col1 +
+                a2 * col2 +
+                a3 * col3 +
+                a4 * col4 +
+                a5 * col5;
+      }
+
+      float externalAngle(in int n, in int d) {
+          float internalAngle = PI * float(n - 2 * d) / float(n);
+          float complementAngle = PI_2 * float(n - 1) / float(n) - internalAngle;
+          float externalAngle = PI_2 - complementAngle;
+          return
+              d == 2 && n == 3 ? EXTERNAL_ANGLE_N_3 :
+              d == 2 && n == 4 ? EXTERNAL_ANGLE_N_4 :
+              externalAngle;
+      }
+
+
+      float sdStar(in vec2 p, in float r, in int n, in float externalAngle) {
+
+          float an = 6.2831853 / float(n);
+          float he = r * tan(0.5 * an);
+
+
+          p = -p.yx;
+          float bn = an * floor((atan(p.y, p.x) + 0.5 * an) / an);
+          vec2 cs = vec2(cos(bn), sin(bn));
+          p = mat2(cs.x, -cs.y, cs.y, cs.x) * p;
+
+
+          p.y = abs(p.y);
+
+          float complementRadius = he / tan(0.5 * externalAngle);
+          float ir = r - complementRadius;
+          vec2 a = vec2(r, he);
+          vec2 b = vec2(ir, 0.0);
+          vec2 pa = p - a;
+          vec2 ba = b - a;
+          float h = clamp(dot(pa, ba) / dot(ba, ba), 0.0, 1.0);
+          vec2 line = pa - ba * h;
+
+          float s = sign(ba.x * pa.y - ba.y * pa.x);
+          return length(line) * s;
+      }
+
+      float sdRegularStar(in vec2 p, in float r, in int n, in int d) {
+          return sdStar(p, r, n, externalAngle(n, d));
+      }
+
+      void render() {
+          vec2 size = vec2(500.);
+          float m = min(iResolution.x, iResolution.y);
+          vec2 uv = (gl_FragCoord.xy-.5*iResolution + .25 * gl_FragCoord.xy);
+          float r = min(1. / max(abs(.5*m - length(uv)), .01), 1.);
+          uv *= 50.*r;
+          float lambda = 1. - (TIME - END)/(START-END);
+          float phase = 2.*pow(sin(PI * lambda),2.);
+          float zoom = 10.*pow(phase, 4.);
+          vec2 offset = vec2(1.) + vec2(-.62000 + 0.0003, .2013);
+          vec2 xy = fract((zoom * (uv - .5*size) + offset * size) / (size))*size;
+          vec2 p = (2.0 * xy - size.xy) / size.y;
+          p *= 1.4;
+          float s = hash12(floor((zoom * (uv - .5*size) + offset * size) / (size)));
+          vec3 star_col = sin(5.*s * iTime + 100.) * palette1(floor(s*4.+1.));
+
+          float d = sdRegularStar(p, 1., N, D);
+
+          float blur = 1. + .9 * (hash12(gl_FragCoord.xy * iTime) - .5);
+          vec3 col = mix(palette1(5.), star_col, smoothstep(0., .05 * zoom, .05/abs(d) - .5));
+
+          gl_FragColor = vec4(col, 1.0);
+      }
+
+      void main(){
+        if(TIME > START && TIME <= END) {
+          render();
+        } else {
+          gl_FragColor = vec4(.0);
+        }
+      }
+    </script>
+    <script type="x-shader/x-fragment" id="Final">
+      precision highp float;
+
+      uniform float iTime;
+      uniform float iScrollTop;
+      uniform vec2 iResolution;
+      #define START 50.
+      #define END 60.
+      #define TIME iScrollTop
+
+      float hash12(vec2 p)
+      {
+        vec3 p3  = fract(vec3(p.xyx) * .1031);
+        p3 += dot(p3, p3.yzx + 33.33);
+        return fract((p3.x + p3.y) * p3.z);
+      }
+
+      vec3 starfield (float size, float speed) {
+        vec2 xy = gl_FragCoord.xy;
+        xy.y -= speed * TIME;
+        vec2 gl = fract(xy / size);
+        vec2 id = floor(xy / size);
+        vec3 col = vec3(1.);
+
+        float x = hash12(hash12(vec2(size))*id);
+        float s = sign(x - .5);
+
+        gl -= .5;
+        gl += .7*hash12(id + 1.);
+        float d = length(gl);
+
+        float amp = .005 / max(d, .001);
+        amp = s * pow(amp, 3.);
+        return max(amp * col, vec3(0.));
+      }
+
+      void render() {
+          vec2 uv = gl_FragCoord.xy / iResolution;
+          vec3 col1 = .5*vec3(247., 37., 133.) / 255.;
+          vec3 col2 = vec3(53., 12., 163.) / 255.;
+          vec3 col = mix(col1, col2, length(uv));
+          col *= mix(1., hash12(gl_FragCoord.xy), .05);
+          col += starfield(500., 100.)
+          + starfield(400., 200.)
+          + starfield(420., 300.)
+          + starfield(460., 400.)
+          + starfield(500., 500.)
+          + starfield(700., 600.);
+
+          col.x = clamp(0., 1., col.x);
+          col.y = clamp(0., 1., col.y);
+          col.z = clamp(0., 1., col.z);
+          float lambda = 1. - (TIME - END)/(START-END);
+          col = mix(vec3(0.), col, lambda);
+
+          gl_FragColor = vec4(col, 1.);
+      }
+
+      void main(){
+        if(TIME > START && TIME <= END) {
+          render();
+        } else {
+          gl_FragColor = vec4(.0);
+        }
+      }
+    </script>
+    <script type="x-shader/x-fragment" id="Selector">
+      precision highp float;
+
+      uniform float iTime;
+      uniform float iScrollTop;
+      uniform vec2 iResolution;
+      uniform sampler2D iChannel0;
+      uniform sampler2D iChannel1;
+      uniform sampler2D iChannel2;
+      uniform sampler2D iChannel3;
+
+      #define TIME iScrollTop
+      #define EFFECT_1_START 10.
+      #define EFFECT_2_START 20.
+      #define EFFECT_3_START 50.
+
+      vec4 channels(sampler2D sp, vec2 uv, float scale){
+        vec4 col = vec4(1.);
+        vec2 d = vec2(pow(sin(.1*TIME)*cos(.1*TIME), 2.)*scale);
+        col.r = texture2D(sp, uv).r;
+        uv += d;
+        col.g = texture2D(sp, uv).g;
+        uv += d;
+        col.b = texture2D(sp, uv).b;
+        return col;
+      }
+
+      void main(){
+        vec2 uv = gl_FragCoord.xy / iResolution;
+        vec4 col = vec4(1.);
+        vec2 blur_size = vec2(.00015);
+        if(TIME < EFFECT_1_START) {
+          col = channels(iChannel0, uv, .005);
+        } else if (EFFECT_1_START <= TIME && TIME < EFFECT_2_START){
+          col = channels(iChannel1, uv, .1);
+        } else if (EFFECT_2_START <= TIME && TIME < EFFECT_3_START){
+          //col = blur(iChannel2, uv, blur_size);
+          col = channels(iChannel2, uv, .1);
+        }
+        else {
+          col = texture2D(iChannel3, uv);
+        }
+        gl_FragColor = col;
+      }
+    </script>
+    <script>
+      const loadImage = (src) =>
+        new Promise((resolve, reject) => {
+          let img = new Image();
+          img.crossOrigin = ""; // ask for CORS permission
+          img.onload = () => resolve(img);
+          img.onerror = () => {
+            reject(new Error("Failed to load image from: " + src));
+          };
+          img.src = src;
+        });
+
+      shaderWebBackground.shade({
+        onInit: (ctx) => {
+          Promise.all([
+            loadImage("cat.png").then((image) => {
+              const gl = ctx.gl;
+              const img = gl.createTexture();
+              gl.bindTexture(gl.TEXTURE_2D, img);
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_S,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_T,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                image
+              );
+              gl.bindTexture(gl.TEXTURE_2D, null);
+              ctx.iEye = img;
+            }),
+            loadImage("zero.png").then((image) => {
+              const gl = ctx.gl;
+              const img = gl.createTexture();
+              gl.bindTexture(gl.TEXTURE_2D, img);
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_S,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_T,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                image
+              );
+              gl.bindTexture(gl.TEXTURE_2D, null);
+              ctx.iZero = img;
+            }),
+            loadImage("one.png").then((image) => {
+              const gl = ctx.gl;
+              const img = gl.createTexture();
+              gl.bindTexture(gl.TEXTURE_2D, img);
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_S,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(
+                gl.TEXTURE_2D,
+                gl.TEXTURE_WRAP_T,
+                gl.CLAMP_TO_EDGE
+              );
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+              gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+              gl.texImage2D(
+                gl.TEXTURE_2D,
+                0,
+                gl.RGBA,
+                gl.RGBA,
+                gl.UNSIGNED_BYTE,
+                image
+              );
+              gl.bindTexture(gl.TEXTURE_2D, null);
+              ctx.iOne = img;
+            }),
+          ]);
+        },
+        shaders: {
+          Intro: {
+            uniforms: {
+              iTime: (gl, loc) => gl.uniform1f(loc, performance.now() / 1000),
+              iScrollTop: (gl, loc, ctx) =>
+                gl.uniform1f(loc, window.scrollY / window.innerHeight),
+              iResolution: (gl, loc, ctx) =>
+                gl.uniform2f(loc, ctx.width, ctx.height),
+              iEye: (gl, loc, ctx) => ctx.texture(loc, ctx.iEye),
+            },
+          },
+          Effect1: {
+            uniforms: {
+              iTime: (gl, loc) => gl.uniform1f(loc, performance.now() / 1000),
+              iScrollTop: (gl, loc, ctx) =>
+                gl.uniform1f(loc, window.scrollY / window.innerHeight),
+              iResolution: (gl, loc, ctx) =>
+                gl.uniform2f(loc, ctx.width, ctx.height),
+              iChannel0: (gl, loc, ctx) => ctx.texture(loc, ctx.buffers.Intro),
+              iZero: (gl, loc, ctx) => ctx.texture(loc, ctx.iZero),
+              iOne: (gl, loc, ctx) => ctx.texture(loc, ctx.iOne),
+            },
+          },
+          SVG: {
+            uniforms: {
+              iTime: (gl, loc) => gl.uniform1f(loc, performance.now() / 1000),
+              iScrollTop: (gl, loc, ctx) =>
+                gl.uniform1f(loc, window.scrollY / window.innerHeight),
+              iResolution: (gl, loc, ctx) =>
+                gl.uniform2f(loc, ctx.width, ctx.height),
+              iChannel0: (gl, loc, ctx) =>
+                ctx.texture(loc, ctx.buffers.Effect1),
+            },
+          },
+          Final: {
+            uniforms: {
+              iTime: (gl, loc) => gl.uniform1f(loc, performance.now() / 1000),
+              iScrollTop: (gl, loc, ctx) =>
+                gl.uniform1f(loc, window.scrollY / window.innerHeight),
+              iResolution: (gl, loc, ctx) =>
+                gl.uniform2f(loc, ctx.width, ctx.height),
+            },
+          },
+          Selector: {
+            uniforms: {
+              iTime: (gl, loc) => gl.uniform1f(loc, performance.now() / 1000),
+              iScrollTop: (gl, loc, ctx) =>
+                gl.uniform1f(loc, window.scrollY / window.innerHeight),
+              iResolution: (gl, loc, ctx) =>
+                gl.uniform2f(loc, ctx.width, ctx.height),
+              iChannel0: (gl, loc, ctx) => ctx.texture(loc, ctx.buffers.Intro),
+              iChannel1: (gl, loc, ctx) =>
+                ctx.texture(loc, ctx.buffers.Effect1),
+              iChannel2: (gl, loc, ctx) => ctx.texture(loc, ctx.buffers.SVG),
+              iChannel3: (gl, loc, ctx) => ctx.texture(loc, ctx.buffers.Final),
+            },
+          },
+        },
+      });
+    </script>
+    <style>
+      .shader-web-background-fallback {
+        background: black;
+        background-position: center;
+        background-size: cover;
+        background-attachment: fixed;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="demo">
+      <div id="title">
+        <p>
+          Hey, I'm <a href="https://github.com/mapehe">mapehe</a> from
+          <a href="https://three-consulting.github.io/threepoint-ad/"
+            >three.consulting</a
+          >
+          and these are some shader experiments I made.
+        </p>
+        <p>
+          Start scrolling (on desktop it's best to just press DOWN)... if you
+          get a bad FPS, try reducing window size to reduce the resolution.
+        </p>
+      </div>
+      <div id="end">
+        <p>Thanks for watching &lt;3</p>
+        <p>
+          This <a href="https://github.com/mapehe/assorted-shaders">code</a> is
+          free to use.
+        </p>
+      </div>
+    </div>
+  </body>
+</html>
